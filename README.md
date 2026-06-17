@@ -1,35 +1,32 @@
-# 💸 supabase-github-backup
+# 🛡️ Open-source Supabase Disaster Recovery Toolkit
 
 <p align="center">
-  <strong>Free automated daily backups for any Supabase project — keep your data, version your history, and save up to ₹30,000/year (₹2,500/month) per project.</strong>
+  <strong>Automated daily off-site backup and recovery for Supabase projects without paying for Pro backup features.</strong>
 </p>
 
 <p align="center">
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D20-blue.svg" alt="Node.js version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/Saved-Over%20%E2%82%B925%2C000-green.svg" alt="Savings Badge">
 </p>
 
 ---
 
-## 🚀 The Pitch: Why this exists (and why you should use it)
+## 🚀 Why this exists (and why you should use it)
 
-If you build websites for clients or manage multiple products, you typically need to place them in separate organizations for billing isolation and access control. With **Supabase Pro priced at ₹2,500/month (₹30,000/year) per organization**, managing 8 client projects would run you **over ₹2.4 Lakhs a year** just to secure your data with Pro backups.
+Supabase is an incredible backend platform, but automatic scheduled backups are locked behind the **Pro tier ($25/month or ~₹2,500/month)**. If you run staging environments, client proof-of-concepts, auxiliary applications, or hobby projects, paying for the Pro tier solely to secure database snapshots is inefficient.
 
-Even if you bundle multiple projects under a single Pro organization, Supabase charges **+$10/month (~₹1,000/month) for each additional project instance's compute**, on top of storage and database size overages. 
+The **Supabase Disaster Recovery Toolkit** provides a robust, off-site backup and recovery solution for projects that don't want to pay for Pro backup features. It automatically packages your database records and authentication schema into version-controlled JSON snapshots stored directly in your private Git repository.
 
-**`supabase-github-backup`** lets you confidently keep your projects on the Free tier and secure your data for **₹0/month**. It runs automatically via GitHub Actions, pushing time-stamped JSON snapshots directly into a private GitHub repository.
+### 📊 Feature Comparison: Supabase Native Backups vs. DR Toolkit
 
-### 📊 The Comparison: Supabase Pro vs. This Tool
-
-| Feature | Supabase Pro (₹2,500/mo) | `supabase-github-backup` (₹0/mo) |
+| Feature | Supabase Native Backups (Pro+) | Supabase DR Toolkit (Free) |
 | :--- | :---: | :---: |
-| **Cost** | 🔴 **₹30,000 / year** | 🟢 **₹0 (100% Free)** |
-| **Backup Destination** | Supabase Internal | 🟢 **Your own Private Git Repository** |
-| **Auth Users Export** | 🟡 Restricted | 🟢 **Full (Emails, Profiles & Metadata)** |
-| **Data Retention** | 7 Days | 🟢 **Infinite (Version-controlled history)** |
-| **Setup Time** | 1 click | 🟡 **5 minutes (once)** |
-| **Relational Restore** | Manual DB Import | 🟢 **Automatic (UUID Remapping included)** |
+| **Required Tier** | 🔴 Pro plan ($25+/mo) | 🟢 Works on all tiers (including Free) |
+| **Storage Destination** | Supabase Internal | 🟢 Your Private Git Repository (Off-site) |
+| **Auth Schema Backup** | 🟡 Internal Only | 🟢 Full JSON Export (IDs, emails, metadata) |
+| **Retention Policy** | 7 to 30 Days | 🟢 Infinite (Stored in your Git commit history) |
+| **Trigger Execution** | Automated | 🟢 Automated via GitHub Actions + Manual trigger |
+| **Relational Restoration** | Requires manual SQL/import | 🟢 Automated restoration with **UUID Remapping** |
 
 ---
 

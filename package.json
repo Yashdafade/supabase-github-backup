@@ -1,7 +1,7 @@
 {
-  "name": "supabase-github-backup",
+  "name": "supabase-disaster-recovery-toolkit",
   "version": "1.0.0",
-  "description": "Free automated daily backups for any Supabase project — no Pro plan needed",
+  "description": "Open-source Supabase Disaster Recovery Toolkit — free automated daily backups for database tables and auth users to GitHub",
   "type": "module",
   "scripts": {
     "backup": "node scripts/backup.js",
