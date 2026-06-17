@@ -6,9 +6,7 @@
 export default {
   // Your Supabase table names to back up, listed in restore/dependency order (parents first)
   tables: [
-    'users',
-    'posts',
-    'orders',
+    'analyses'
   ],
 
   // Timezone for backup folder timestamps

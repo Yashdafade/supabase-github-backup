@@ -3,6 +3,7 @@ import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import WebSocket from 'ws';
 import config from '../backup.config.js';
+import { encrypt } from './crypto.js';
 
 // Load .env file manually if it exists (for local testing)
 if (existsSync('.env')) {
@@ -23,9 +24,10 @@ if (existsSync('.env')) {
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const backupEncryptionKey = process.env.BACKUP_ENCRYPTION_KEY;
 
-if (!supabaseUrl || !supabaseServiceRoleKey) {
-  console.error('❌ Error: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables are required.');
+if (!supabaseUrl || !supabaseServiceRoleKey || !backupEncryptionKey) {
+  console.error('❌ Error: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and BACKUP_ENCRYPTION_KEY environment variables are required.');
   process.exit(1);
 }
 
@@ -81,9 +83,10 @@ for (const table of tables) {
     continue;
   }
   
-  const filePath = join(backupDir, `${table}.json`);
-  writeFileSync(filePath, JSON.stringify(data, null, 2));
-  console.log(`   ✅ Saved ${table}: ${data ? data.length : 0} rows`);
+  const filePath = join(backupDir, `${table}.json.enc`);
+  const encryptedData = encrypt(JSON.stringify(data, null, 2), backupEncryptionKey);
+  writeFileSync(filePath, encryptedData);
+  console.log(`   🔒 Saved encrypted ${table}: ${data ? data.length : 0} rows`);
 }
 
 // 2. Backup authentication users
@@ -115,9 +118,10 @@ try {
     page++;
   }
   
-  const authFilePath = join(backupDir, 'auth_users.json');
-  writeFileSync(authFilePath, JSON.stringify(allUsers, null, 2));
-  console.log(`   ✅ Saved auth_users: ${allUsers.length} users`);
+  const authFilePath = join(backupDir, 'auth_users.json.enc');
+  const encryptedUsers = encrypt(JSON.stringify(allUsers, null, 2), backupEncryptionKey);
+  writeFileSync(authFilePath, encryptedUsers);
+  console.log(`   🔒 Saved encrypted auth_users: ${allUsers.length} users`);
 } catch (error) {
   console.error('❌ Failed to backup auth users:', error.message || error);
 }

@@ -76,7 +76,7 @@ Click **"Use this template"** or **"Fork"** on GitHub to create your own copy.
 > **You MUST make your repository PRIVATE.** Your backup files will contain real user emails, names, and metadata. Storing this in a public repository is a severe security risk.
 
 ### Step 2: Configure Your Tables
-Open [backup.config.js](file:///G:/supabase-free-backup/backup.config.js) in the root of the project and specify your database tables in dependency order (parents before children):
+Open [backup.config.js](file:///G:/supabase-github-backup/backup.config.js) in the root of the project and specify your database tables in dependency order (parents before children):
 ```js
 export default {
   tables: [
@@ -98,10 +98,11 @@ export default {
    - Generate a new classic token named `supabase-backup-token` with the **`repo`** scope. Copy it.
 
 ### Step 4: Add GitHub Secrets
-In your new repository, go to **Settings** → **Secrets and variables** → **Actions** and add these three secrets:
+In your new repository, go to **Settings** → **Secrets and variables** → **Actions** and add these secrets:
 - `SUPABASE_URL` : `https://your-project-id.supabase.co`
 - `SUPABASE_SERVICE_ROLE_KEY` : `your-service-role-key`
 - `BACKUP_GITHUB_TOKEN` : `your-copied-github-pat`
+- `BACKUP_ENCRYPTION_KEY` : `your-chosen-strong-passphrase` (used to encrypt backup files)
 
 ### Step 5: Test Trigger
 Go to the **Actions** tab of your repo, select the **Daily Supabase Backup** workflow, and click **Run workflow**. Once completed, your repository will contain a fresh `backups/` snapshot!
@@ -126,6 +127,7 @@ Edit your `.env` file with your credentials:
 ```env
 SUPABASE_URL=https://your-project-id.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
+BACKUP_ENCRYPTION_KEY=your-custom-secure-passphrase-here
 ```
 
 ### Manual Backup Command
@@ -146,14 +148,14 @@ npm run restore backups/18-06-2026_01-00-AM users
 
 ## 📁 Backup Folder Anatomy
 
-Every backup creates a neat, structured directory:
+Every backup creates a securely encrypted directory using standard `AES-256-CBC`:
 ```
 backups/
   18-06-2026_01-00-AM/
-    users.json         ← Custom database table
-    posts.json         ← Custom database table
-    orders.json        ← Custom database table
-    auth_users.json    ← Entire authentication schema exports (emails, metadata)
+    users.json.enc         ← Encrypted database table snapshot
+    posts.json.enc         ← Encrypted database table snapshot
+    orders.json.enc        ← Encrypted database table snapshot
+    auth_users.json.enc    ← Encrypted authentication schema snapshot
 ```
 
 ---
@@ -161,15 +163,17 @@ backups/
 ## 🔄 Restore Mechanics & UUID Mapping
 
 When you run `npm run restore <path>`, the script performs these operations:
-1. **Rebuilds Auth Schema:** Reads `auth_users.json` and creates user entries on the target Supabase project.
-2. **Dynamic ID Mapping:** Recreated users get new UUIDs from Supabase. The script logs these mappings in memory (`old-uuid` -> `new-uuid`).
-3. **Cascades Foreign Keys:** While inserting rows into your tables (e.g. `posts`, `orders`), the script swaps out old user references in common fields (`id`, `user_id`, `created_by`) with the new UUIDs to ensure foreign key constraints succeed.
-4. **Temporary Password:** Restored users are initialized with a temporary password (`ChangeMePermanent123!`) and will need to request a password reset to sign back in.
+1. **Decrypts Snapshots:** Reads and decrypts `.json.enc` files using `BACKUP_ENCRYPTION_KEY` (supports backward-compatible unencrypted `.json` fallbacks if they exist).
+2. **Rebuilds Auth Schema:** Reads the decrypted `auth_users.json` metadata and creates user entries on the target Supabase project.
+3. **Dynamic ID Mapping:** Recreated users get new UUIDs from Supabase. The script logs these mappings in memory (`old-uuid` -> `new-uuid`).
+4. **Cascades Foreign Keys:** While inserting rows into your tables (e.g. `posts`, `orders`), the script swaps out old user references in common fields (`id`, `user_id`, `doctor_id`, `created_by`) with the new UUIDs to ensure foreign key constraints succeed.
+5. **Temporary Password:** Restored users are initialized with a temporary password (`ChangeMePermanent123!`) and will need to request a password reset to sign back in.
 
 ---
 
 ## 🛡️ Security Best Practices
 
+- **Encryption Key Passphrase:** Keep your `BACKUP_ENCRYPTION_KEY` safe. If you lose this key, you will never be able to decrypt or restore your backups.
 - **Service Role Secret:** Never commit your `.env` file to your codebase.
 - **Repository Visibility:** Make absolute sure the repository is **Private**.
 - **Auth Passwords:** Passwords cannot be exported from Supabase's authentication service. Restoring accounts resets passwords to a placeholder.

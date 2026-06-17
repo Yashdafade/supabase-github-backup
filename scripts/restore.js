@@ -3,6 +3,7 @@ import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import WebSocket from 'ws';
 import config from '../backup.config.js';
+import { decrypt } from './crypto.js';
 
 // Load env variables
 if (existsSync('.env')) {
@@ -23,9 +24,10 @@ if (existsSync('.env')) {
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const backupEncryptionKey = process.env.BACKUP_ENCRYPTION_KEY;
 
-if (!supabaseUrl || !supabaseServiceRoleKey) {
-  console.error('❌ Error: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables are required.');
+if (!supabaseUrl || !supabaseServiceRoleKey || !backupEncryptionKey) {
+  console.error('❌ Error: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and BACKUP_ENCRYPTION_KEY environment variables are required.');
   process.exit(1);
 }
 
@@ -56,11 +58,22 @@ console.log(`🚀 Starting restore from: ${backupPath}`);
 const userIdMap = {};
 
 // 1. Restore Auth Users
+const authUsersEncFile = join(backupPath, 'auth_users.json.enc');
 const authUsersFile = join(backupPath, 'auth_users.json');
-if (existsSync(authUsersFile)) {
+
+let users = null;
+if (existsSync(authUsersEncFile)) {
+  console.log('👥 Decrypting and parsing auth users...');
+  const encryptedContent = readFileSync(authUsersEncFile, 'utf-8');
+  users = JSON.parse(decrypt(encryptedContent, backupEncryptionKey));
+} else if (existsSync(authUsersFile)) {
+  console.log('👥 Parsing unencrypted auth users...');
+  users = JSON.parse(readFileSync(authUsersFile, 'utf-8'));
+}
+
+if (users) {
   if (targetTable) {
     console.log('👥 Mapping existing auth users in memory (skipping user creation)...');
-    const users = JSON.parse(readFileSync(authUsersFile, 'utf-8'));
     const { data: existingUsers } = await supabase.auth.admin.listUsers();
     if (existingUsers?.users) {
       for (const user of users) {
@@ -72,7 +85,6 @@ if (existsSync(authUsersFile)) {
     }
   } else {
     console.log('👥 Restoring auth users...');
-    const users = JSON.parse(readFileSync(authUsersFile, 'utf-8'));
     for (const user of users) {
       // Check if user already exists
       const { data: existingUsers } = await supabase.auth.admin.listUsers();
@@ -126,14 +138,21 @@ function mapUserIds(row) {
 
 // 2. Restore each table
 for (const table of tablesOrder) {
+  const tableEncFile = join(backupPath, `${table}.json.enc`);
   const tableFile = join(backupPath, `${table}.json`);
-  if (!existsSync(tableFile)) {
+  
+  let rawData = null;
+  if (existsSync(tableEncFile)) {
+    console.log(`📥 Decrypting and restoring table: ${table}...`);
+    const encryptedContent = readFileSync(tableEncFile, 'utf-8');
+    rawData = JSON.parse(decrypt(encryptedContent, backupEncryptionKey));
+  } else if (existsSync(tableFile)) {
+    console.log(`📥 Restoring unencrypted table: ${table}...`);
+    rawData = JSON.parse(readFileSync(tableFile, 'utf-8'));
+  } else {
     console.log(`⚠️ Skip table: ${table} (backup file not found)`);
     continue;
   }
-  
-  console.log(`📥 Restoring table: ${table}...`);
-  const rawData = JSON.parse(readFileSync(tableFile, 'utf-8'));
   
   // Map foreign keys for auth users
   const mappedData = rawData.map(row => mapUserIds(row));
