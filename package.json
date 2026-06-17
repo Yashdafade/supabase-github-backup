@@ -1,0 +1,14 @@
+{
+  "name": "supabase-github-backup",
+  "version": "1.0.0",
+  "description": "Free automated daily backups for any Supabase project — no Pro plan needed",
+  "type": "module",
+  "scripts": {
+    "backup": "node scripts/backup.js",
+    "restore": "node scripts/restore.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.43.0",
+    "ws": "^8.21.0"
+  }
+}
