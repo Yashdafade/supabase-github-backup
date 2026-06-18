@@ -1,37 +1,32 @@
 import crypto from 'crypto';
 
 /**
- * Encrypts a text string using a passphrase.
- * @param {string} text - The plaintext to encrypt.
+ * Encrypts a string or buffer using AES-256-CBC.
+ * @param {string|Buffer} data - The data to encrypt.
  * @param {string} passphrase - The encryption password.
- * @returns {string} - The IV and ciphertext separated by a colon, hex encoded.
+ * @returns {Buffer} - The initialization vector (16 bytes) concatenated with the encrypted payload.
  */
-export function encrypt(text, passphrase) {
-  // Derive key using SHA256 of the passphrase
+export function encrypt(data, passphrase) {
   const key = crypto.createHash('sha256').update(passphrase).digest();
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
-  let encrypted = cipher.update(text, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  return iv.toString('hex') + ':' + encrypted;
+  const inputBuffer = Buffer.isBuffer(data) ? data : Buffer.from(data, 'utf8');
+  return Buffer.concat([iv, cipher.update(inputBuffer), cipher.final()]);
 }
 
 /**
- * Decrypts an encrypted hex string using a passphrase.
- * @param {string} encryptedText - The IV and ciphertext separated by a colon.
+ * Decrypts a buffer using AES-256-CBC.
+ * @param {Buffer} encryptedBuffer - The encrypted buffer containing the 16-byte IV at the beginning.
  * @param {string} passphrase - The decryption password.
- * @returns {string} - The decrypted plaintext.
+ * @returns {Buffer} - The decrypted payload.
  */
-export function decrypt(encryptedText, passphrase) {
-  const parts = encryptedText.split(':');
-  if (parts.length !== 2) {
-    throw new Error('Invalid encrypted format.');
+export function decrypt(encryptedBuffer, passphrase) {
+  if (encryptedBuffer.length < 17) {
+    throw new Error('Invalid encrypted buffer size.');
   }
-  const iv = Buffer.from(parts[0], 'hex');
-  const encrypted = parts[1];
   const key = crypto.createHash('sha256').update(passphrase).digest();
+  const iv = encryptedBuffer.subarray(0, 16);
+  const encrypted = encryptedBuffer.subarray(16);
   const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
-  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
-  return decrypted;
+  return Buffer.concat([decipher.update(encrypted), decipher.final()]);
 }

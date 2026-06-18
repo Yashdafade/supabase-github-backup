@@ -1,11 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 import WebSocket from 'ws';
+import { gunzipSync } from 'zlib';
 import config from '../backup.config.js';
 import { decrypt } from './crypto.js';
 
-// Load env variables
+// Load env variables manually if it exists (for local testing)
 if (existsSync('.env')) {
   const envFile = readFileSync('.env', 'utf-8');
   envFile.split(/\r?\n/).forEach((line) => {
@@ -31,14 +32,19 @@ if (!supabaseUrl || !supabaseServiceRoleKey || !backupEncryptionKey) {
   process.exit(1);
 }
 
-const backupPath = process.argv[2];
+const backupFilePath = process.argv[2];
 const targetTable = process.argv[3];
 
-if (!backupPath) {
-  console.error('❌ Error: Please specify the backup directory to restore. Example:');
-  console.error('   node scripts/restore.js backups/17-06-2026_08-17-PM');
+if (!backupFilePath) {
+  console.error('❌ Error: Please specify the backup file to restore. Example:');
+  console.error('   node scripts/restore.js backups/17-06-2026_08-17-PM.tar.gz.enc');
   console.error('   To restore a single table, add the table name:');
-  console.error('   node scripts/restore.js backups/17-06-2026_08-17-PM users');
+  console.error('   node scripts/restore.js backups/17-06-2026_08-17-PM.tar.gz.enc users');
+  process.exit(1);
+}
+
+if (!existsSync(backupFilePath)) {
+  console.error(`❌ Error: Backup file not found at path: ${backupFilePath}`);
   process.exit(1);
 }
 
@@ -52,26 +58,30 @@ const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
   },
 });
 
-console.log(`🚀 Starting restore from: ${backupPath}`);
+console.log(`🚀 Starting restore from file: ${backupFilePath}`);
 
-// Map to store old user UUID -> new user UUID mapping
-const userIdMap = {};
+// 1. Read, Decrypt (if encrypted), and Decompress the archive
+const fileBuffer = readFileSync(backupFilePath);
+let decompressed = null;
 
-// 1. Restore Auth Users
-const authUsersEncFile = join(backupPath, 'auth_users.json.enc');
-const authUsersFile = join(backupPath, 'auth_users.json');
-
-let users = null;
-if (existsSync(authUsersEncFile)) {
-  console.log('👥 Decrypting and parsing auth users...');
-  const encryptedContent = readFileSync(authUsersEncFile, 'utf-8');
-  users = JSON.parse(decrypt(encryptedContent, backupEncryptionKey));
-} else if (existsSync(authUsersFile)) {
-  console.log('👥 Parsing unencrypted auth users...');
-  users = JSON.parse(readFileSync(authUsersFile, 'utf-8'));
+if (backupFilePath.endsWith('.enc')) {
+  console.log('🔒 Decrypting archive (AES-256)...');
+  const decrypted = decrypt(fileBuffer, backupEncryptionKey);
+  console.log('📦 Decompressing archive...');
+  decompressed = gunzipSync(decrypted);
+} else {
+  console.error('❌ Error: Only encrypted backup archives (.enc) are supported for restore.');
+  process.exit(1);
 }
 
-if (users) {
+const archive = JSON.parse(decompressed.toString('utf-8'));
+console.log(`   ✅ Archive timestamp: ${archive.timestamp}`);
+
+const userIdMap = {};
+
+// 2. Restore Auth Users
+const users = archive.auth_users || [];
+if (users.length > 0) {
   if (targetTable) {
     console.log('👥 Mapping existing auth users in memory (skipping user creation)...');
     const { data: existingUsers } = await supabase.auth.admin.listUsers();
@@ -86,7 +96,6 @@ if (users) {
   } else {
     console.log('👥 Restoring auth users...');
     for (const user of users) {
-      // Check if user already exists
       const { data: existingUsers } = await supabase.auth.admin.listUsers();
       const existingUser = existingUsers?.users?.find(u => u.email === user.email);
       
@@ -95,7 +104,6 @@ if (users) {
         userIdMap[user.id] = existingUser.id;
       } else {
         console.log(`   Creating user: ${user.email}`);
-        // Generate temporary password or use a fallback
         const tempPassword = 'ChangeMePermanent123!'; 
         const { data: created, error } = await supabase.auth.admin.createUser({
           email: user.email,
@@ -115,13 +123,19 @@ if (users) {
   }
 }
 
-// Order of tables to restore to prevent Foreign Key constraints issues
+// 3. Restore Database Tables
 let tablesOrder = config.tables || [];
+const excludeTables = config.excludeTables || [];
 
 if (targetTable) {
   tablesOrder = [targetTable];
   console.log(`🎯 Restoring ONLY target table: ${targetTable}`);
+} else if (tablesOrder.includes('*') || tablesOrder.length === 0) {
+  console.log('🔍 Auto-discovering tables to restore from backup archive...');
+  tablesOrder = Object.keys(archive.tables || {});
 }
+
+tablesOrder = tablesOrder.filter(t => t !== '*' && !excludeTables.includes(t));
 
 // Helper function to map old user IDs to new user IDs in any fields
 function mapUserIds(row) {
@@ -136,25 +150,14 @@ function mapUserIds(row) {
   return row;
 }
 
-// 2. Restore each table
 for (const table of tablesOrder) {
-  const tableEncFile = join(backupPath, `${table}.json.enc`);
-  const tableFile = join(backupPath, `${table}.json`);
-  
-  let rawData = null;
-  if (existsSync(tableEncFile)) {
-    console.log(`📥 Decrypting and restoring table: ${table}...`);
-    const encryptedContent = readFileSync(tableEncFile, 'utf-8');
-    rawData = JSON.parse(decrypt(encryptedContent, backupEncryptionKey));
-  } else if (existsSync(tableFile)) {
-    console.log(`📥 Restoring unencrypted table: ${table}...`);
-    rawData = JSON.parse(readFileSync(tableFile, 'utf-8'));
-  } else {
-    console.log(`⚠️ Skip table: ${table} (backup file not found)`);
+  const rawData = archive.tables[table];
+  if (!rawData) {
+    console.log(`⚠️ Skip table: ${table} (not found in backup archive)`);
     continue;
   }
   
-  // Map foreign keys for auth users
+  console.log(`📥 Restoring table: ${table}...`);
   const mappedData = rawData.map(row => mapUserIds(row));
   
   if (mappedData.length === 0) {
@@ -162,12 +165,73 @@ for (const table of tablesOrder) {
     continue;
   }
   
-  // Upsert rows into Supabase. Upsert avoids primary key conflicts if data is partially there.
   const { error } = await supabase.from(table).upsert(mappedData);
   if (error) {
     console.error(`   ❌ Failed to restore table ${table}:`, error.message);
   } else {
     console.log(`   ✅ Restored ${table}: ${mappedData.length} rows`);
+  }
+}
+
+// 4. Restore Storage Buckets
+const storageData = archive.storage || {};
+const storageKeys = Object.keys(storageData);
+
+if (storageKeys.length > 0) {
+  console.log('\n📤 Restoring storage buckets...');
+  try {
+    const excludeBuckets = config.excludeBuckets || [];
+    
+    // Group files by bucket
+    const bucketGroups = {};
+    for (const key of storageKeys) {
+      const firstSlash = key.indexOf('/');
+      const bucketName = key.substring(0, firstSlash);
+      const destFile = key.substring(firstSlash + 1);
+      
+      if (excludeBuckets.includes(bucketName)) continue;
+      
+      if (!bucketGroups[bucketName]) {
+        bucketGroups[bucketName] = [];
+      }
+      bucketGroups[bucketName].push({ key, destFile });
+    }
+
+    const { data: existingBuckets } = await supabase.storage.listBuckets();
+
+    for (const bucketName of Object.keys(bucketGroups)) {
+      console.log(`📂 Restoring bucket: ${bucketName}...`);
+      
+      // Ensure bucket exists on remote
+      const bucketExists = existingBuckets?.some(b => b.name === bucketName);
+      if (!bucketExists) {
+        console.log(`   ⚠️ Bucket "${bucketName}" does not exist. Creating it...`);
+        const { error: createError } = await supabase.storage.createBucket(bucketName, { public: false });
+        if (createError) {
+          console.error(`   ❌ Failed to create bucket "${bucketName}":`, createError.message);
+          continue;
+        }
+        console.log(`   ✅ Created bucket: ${bucketName}`);
+      }
+
+      for (const fileItem of bucketGroups[bucketName]) {
+        console.log(`   📥 Uploading: ${fileItem.destFile}...`);
+        const fileBuffer = Buffer.from(storageData[fileItem.key], 'base64');
+
+        const { error: uploadError } = await supabase.storage.from(bucketName).upload(fileItem.destFile, fileBuffer, {
+          upsert: true
+        });
+
+        if (uploadError) {
+          console.error(`   ❌ Failed to upload ${fileItem.destFile} to bucket ${bucketName}:`, uploadError.message);
+        } else {
+          console.log(`   ✅ Uploaded: ${bucketName}/${fileItem.destFile}`);
+        }
+      }
+      console.log(`   ✅ Completed restoration for bucket: ${bucketName}`);
+    }
+  } catch (err) {
+    console.error('❌ Failed to restore storage buckets:', err.message || err);
   }
 }
 

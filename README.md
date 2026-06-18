@@ -33,6 +33,7 @@ The **Supabase Disaster Recovery Toolkit** provides a robust, off-site backup an
 ## ⚡ Superpowers & Features
 
 - **📦 Fully Automated:** Runs silently in the background at 1 AM UTC every day via GitHub Actions. Zero server maintenance, zero cost.
+- **🗄️ Storage Buckets Backup:** Recursively lists, downloads, and encrypts all files and folder layouts from your configured Supabase Storage buckets.
 - **👥 Auth User Recovery (The Secret Weapon):** Supabase's free tier and regular pg_dumps omit auth user profiles and metadata. We export the complete GoTrue schema users so you don't lose your user base.
 - **🧬 Relational Restore with UUID Remapping:** Restoring users to a new project generates brand new UUIDs. Our restore script dynamically maps old user IDs to new IDs in subsequent database tables, preserving all your foreign key relationships.
 - **📁 Git-as-a-Database Versioning:** Look back at your database states at any date in history using standard Git commits.
@@ -75,15 +76,35 @@ Click **"Use this template"** or **"Fork"** on GitHub to create your own copy.
 > [!CAUTION]
 > **You MUST make your repository PRIVATE.** Your backup files will contain real user emails, names, and metadata. Storing this in a public repository is a severe security risk.
 
-### Step 2: Configure Your Tables
-Open [backup.config.js](file:///G:/supabase-github-backup/backup.config.js) in the root of the project and specify your database tables in dependency order (parents before children):
+### Step 2: Configure Your Tables & Buckets
+Open [backup.config.js](file:///G:/supabase-github-backup/backup.config.js) in the root of the project and specify your database tables and storage buckets:
 ```js
 export default {
+  // Tables to back up. Listed in restore/dependency order (parents first).
+  // Use ['*'] or leave empty to auto-discover and back up all public database tables.
   tables: [
     'users',
     'posts',
     'orders',
   ],
+
+  // Database tables to exclude from backup (applied to auto-discovered or specified tables)
+  excludeTables: [
+    // 'some_private_table'
+  ],
+
+  // Storage buckets to back up.
+  // Use ['*'] to auto-discover and back up all storage buckets.
+  buckets: [
+    'documents',
+    // add all your storage buckets here
+  ],
+
+  // Storage buckets to exclude from backup (applied to auto-discovered or specified buckets)
+  excludeBuckets: [
+    // 'temp-files'
+  ],
+
   timezone: 'Asia/Kolkata', // Set your target timezone for directory labels
   backupDir: 'backups',
 };
@@ -137,25 +158,21 @@ npm run backup
 
 ### Manual Restore Command
 ```bash
-# Restore all tables and auth users
-npm run restore backups/18-06-2026_01-00-AM
+# Restore all tables, users, and storage from an encrypted archive
+npm run restore backups/18-06-2026_01-00-AM.tar.gz.enc
 
 # Restore only a single table (e.g., users)
-npm run restore backups/18-06-2026_01-00-AM users
+npm run restore backups/18-06-2026_01-00-AM.tar.gz.enc users
 ```
 
 ---
 
-## 📁 Backup Folder Anatomy
+## 📁 Backup Archive Anatomy
 
-Every backup creates a securely encrypted directory using standard `AES-256-CBC`:
+Each backup creates a single compressed, encrypted archive file using standard `AES-256-CBC`:
 ```
 backups/
-  18-06-2026_01-00-AM/
-    users.json.enc         ← Encrypted database table snapshot
-    posts.json.enc         ← Encrypted database table snapshot
-    orders.json.enc        ← Encrypted database table snapshot
-    auth_users.json.enc    ← Encrypted authentication schema snapshot
+  18-06-2026_01-00-AM.tar.gz.enc  ← Encrypted compressed archive (contains database tables, auth schema, and storage buckets)
 ```
 
 ---
@@ -163,11 +180,12 @@ backups/
 ## 🔄 Restore Mechanics & UUID Mapping
 
 When you run `npm run restore <path>`, the script performs these operations:
-1. **Decrypts Snapshots:** Reads and decrypts `.json.enc` files using `BACKUP_ENCRYPTION_KEY` (supports backward-compatible unencrypted `.json` fallbacks if they exist).
-2. **Rebuilds Auth Schema:** Reads the decrypted `auth_users.json` metadata and creates user entries on the target Supabase project.
+1. **Decrypts & Decompresses Archive:** Reads the target encrypted archive file, decrypts it using the mandatory `BACKUP_ENCRYPTION_KEY`, and decompresses the Gzip payload in memory.
+2. **Rebuilds Auth Schema:** Reads the auth users metadata and creates user profiles on the target Supabase project.
 3. **Dynamic ID Mapping:** Recreated users get new UUIDs from Supabase. The script logs these mappings in memory (`old-uuid` -> `new-uuid`).
 4. **Cascades Foreign Keys:** While inserting rows into your tables (e.g. `posts`, `orders`), the script swaps out old user references in common fields (`id`, `user_id`, `doctor_id`, `created_by`) with the new UUIDs to ensure foreign key constraints succeed.
-5. **Temporary Password:** Restored users are initialized with a temporary password (`ChangeMePermanent123!`) and will need to request a password reset to sign back in.
+5. **Restores Storage Buckets:** Automatically creates missing buckets on the target project, decodes base64-encoded files in the archive back into binary buffers, and uploads them using upsert.
+6. **Temporary Password:** Restored users are initialized with a temporary password (`ChangeMePermanent123!`) and will need to request a password reset to sign back in.
 
 ---
 
@@ -182,7 +200,7 @@ When you run `npm run restore <path>`, the script performs these operations:
 
 ## ⚠️ Current Limitations
 
-- **Supabase Storage:** Storage buckets containing media, images, or uploads are not backed up.
+- **Large Storage Files:** Backing up extremely large storage files (several hundred megabytes) might cause memory issues or trigger timeout limits on the GitHub Actions runner.
 - **Scale Limits:** For massive tables (over 100,000 rows), direct querying without custom pagination might timeout or run out of memory.
 - **Password reset requirement:** Restored users must reset their password on their first sign-in.
 
