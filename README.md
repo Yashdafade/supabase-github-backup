@@ -183,7 +183,7 @@ When you run `npm run restore <path>`, the script performs these operations:
 1. **Decrypts & Decompresses Archive:** Reads the target encrypted archive file, decrypts it using the mandatory `BACKUP_ENCRYPTION_KEY`, and decompresses the Gzip payload in memory.
 2. **Rebuilds Auth Schema:** Reads the auth users metadata and creates user profiles on the target Supabase project.
 3. **Dynamic ID Mapping:** Recreated users get new UUIDs from Supabase. The script logs these mappings in memory (`old-uuid` -> `new-uuid`).
-4. **Cascades Foreign Keys:** While inserting rows into your tables (e.g. `posts`, `orders`), the script swaps out old user references in common fields (`id`, `user_id`, `doctor_id`, `created_by`) with the new UUIDs to ensure foreign key constraints succeed.
+4. **Cascades Foreign Keys:** While inserting rows into your tables (e.g. `posts`, `orders`), the script swaps out old user references in common fields (`id`, `user_id`, `owner_id`, `created_by`, `updated_by`) with the new UUIDs to ensure foreign key constraints succeed.
 5. **Restores Storage Buckets:** Automatically creates missing buckets on the target project, decodes base64-encoded files in the archive back into binary buffers, and uploads them using upsert.
 6. **Temporary Password:** Restored users are initialized with a temporary password (`ChangeMePermanent123!`) and will need to request a password reset to sign back in.
 

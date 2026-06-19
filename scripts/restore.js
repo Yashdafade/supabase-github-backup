@@ -139,7 +139,7 @@ tablesOrder = tablesOrder.filter(t => t !== '*' && !excludeTables.includes(t));
 
 // Helper function to map old user IDs to new user IDs in any fields
 function mapUserIds(row) {
-  const fieldsToMap = ['id', 'user_id', 'doctor_id', 'created_by'];
+  const fieldsToMap = ['id', 'user_id', 'owner_id', 'created_by', 'updated_by'];
   for (const field of fieldsToMap) {
     if (row[field] && userIdMap[row[field]]) {
       const oldVal = row[field];

@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { writeFileSync, existsSync, readFileSync } from 'fs';
+import { writeFileSync, existsSync, readFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import WebSocket from 'ws';
 import { gzipSync } from 'zlib';
@@ -66,6 +66,7 @@ const ampm = parts.find(p => p.type === 'dayPeriod').value.toUpperCase();
 
 const timestamp = `${day}-${month}-${year}_${hoursStr}-${minutes}_${ampm}`;
 const baseBackupDir = config.backupDir || 'backups';
+mkdirSync(baseBackupDir, { recursive: true });
 
 // Initialize the archive structure
 const archive = {
