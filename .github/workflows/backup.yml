@@ -1,18 +1,23 @@
 name: Daily Supabase Backup
 
+# on:
+#   schedule:
+#     - cron: '0 1 * * *'  # Every day at 1 AM UTC — adjust to your timezone
+#   workflow_dispatch:       # Manual trigger from GitHub Actions tab
+
 on:
-  schedule:
-    - cron: '0 1 * * *'  # Every day at 1 AM UTC — adjust to your timezone
-  workflow_dispatch:       # Manual trigger from GitHub Actions tab
+  workflow_dispatch:       # Manual trigger only by default for template safety
 
 jobs:
   backup:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.BACKUP_GITHUB_TOKEN }}
+          token: ${{ secrets.BACKUP_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
