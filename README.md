@@ -117,13 +117,18 @@ export default {
 2. **GitHub Personal Access Token (PAT):**
    - Go to [github.com/settings/tokens](https://github.com/settings/tokens).
    - Generate a new classic token named `supabase-backup-token` with the **`repo`** scope. Copy it.
+3. **Backup Encryption Key:**
+   - Generate a strong, secure 32-character hexadecimal key. You can generate one instantly using one of these commands:
+     - **OpenSSL:** `openssl rand -hex 32`
+     - **Node.js:** `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+   - Copy this generated string.
 
 ### Step 4: Add GitHub Secrets
 In your new repository, go to **Settings** → **Secrets and variables** → **Actions** and add these secrets:
 - `SUPABASE_URL` : `https://your-project-id.supabase.co`
 - `SUPABASE_SERVICE_ROLE_KEY` : `your-service-role-key`
 - `BACKUP_GITHUB_TOKEN` : `your-copied-github-pat`
-- `BACKUP_ENCRYPTION_KEY` : `your-chosen-strong-passphrase` (used to encrypt backup files)
+- `BACKUP_ENCRYPTION_KEY` : `your-generated-encryption-key` (keep this safe to decrypt/restore your backups)
 
 ### Step 5: Test Trigger
 Go to the **Actions** tab of your repo, select the **Daily Supabase Backup** workflow, and click **Run workflow**. Once completed, your repository will contain a fresh `backups/` snapshot!
